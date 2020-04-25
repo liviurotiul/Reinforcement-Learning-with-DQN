@@ -45,7 +45,7 @@ FULL_IMG = True
 RGB = True
 DEBUG = False
 VALIDATION_FREQ = 100
-BATCH_SIZE = 4
+BATCH_SIZE = 32
 GAMMA = 0.99
 EPS_START = 1
 EPS_END = 0.05
@@ -59,7 +59,7 @@ ALPHA = np.random.randint(1)
 # ENVIRIONMENT = 'LunarLander-v2'
 ENVIRIONMENT = 'CartPole-v0'
 TEST = False
-LR = 7e-6
+LR = 4e-6
 CAP = 25000
 EPS_ADAM = 3e-4
 
@@ -268,12 +268,10 @@ def optimize_DQN():
 	# print(current_states)
 	current_states = torch.cat(current_states, dim=0) # concatenate to send it to the target network
 	actions = torch.cat((np.asarray(batch).transpose()[1]).tolist()).to(device).unsqueeze(1)
-	try:
-		non_final_next_states = torch.cat([s for s in np.asarray(batch).transpose()[3].tolist()
-													if s is not None])
-	except:
-		print(batch)
-		input("sdadadda")
+
+	non_final_next_states = torch.cat([s for s in np.asarray(batch).transpose()[3].tolist()
+												if s is not None])
+
 	# in the state_values will be found the values of the future states given we make actions based on policy
 	# pi and coming from state S (current_states) 
 	if DEBUG:
@@ -535,7 +533,7 @@ if TRAIN:
 				print("best validation updated")
 			print(new_efficiency)
 			validation_values.append([steps_done, new_efficiency])
-			if new_efficiency > 420:
+			if new_efficiency > 500:
 				break
 
 
@@ -593,25 +591,26 @@ if TRAIN:
 				else:
 					next_state = None
 			memory.push_back(current_state,
-							np.asarray([action.item()]),
-							np.asarray([reward]),
+							torch.from_numpy(np.asarray([action.item()])).cpu(),
+							torch.from_numpy(np.asarray([reward])).cpu(),
 							next_state)
 			current_state = next_state
-
-			if steps_done % OPT_FREQ == 0:
-				if ALGORITHM == 1:
-					optimize_double_DQN()
-				elif ALGORITHM == 3:
-					optimize_double_DQN_PER()
-				elif ALGORITHM == 0:
-					optimize_DQN()
-
+			try:
+				if steps_done % OPT_FREQ == 0:
+					if ALGORITHM == 1:
+						optimize_double_DQN()
+					elif ALGORITHM == 3:
+						optimize_double_DQN_PER()
+					elif ALGORITHM == 0:
+						optimize_DQN()
+			except:
+				print("An unkown error has occurred when optimizing")
 			if steps_done % TARGET_UPDATE == 0:# and ALGORITHM != 1 and ALGORITHM != 3:
 				target_net.load_state_dict(online_net.state_dict())
-			if done:
-				break
 			if DEBUG:
 				count_tensors()
+			if done:
+				break
 
 		episode_durations.append([steps_done, total_reward])
 		if not SHOW_IMG:

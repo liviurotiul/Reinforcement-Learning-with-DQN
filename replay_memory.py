@@ -19,11 +19,11 @@ class ReplayMemory():
 
 	def sample(self):
 		samples = np.random.randint(low=0, high=len(self.memory)-1, size=self.batch_size)
-		batch = np.asarray(self.memory)[samples].tolist()
-		for i in range(len(batch)):
-			batch[i][1] = torch.LongTensor(batch[i][1])
-			batch[i][2] = torch.LongTensor(batch[i][2])
-		return batch
+		batch = np.asarray(self.memory)[samples]
+		# for i in range(len(batch)):
+		# 	batch[i][1] = torch.LongTensor(batch[i][1])
+		# 	batch[i][2] = torch.LongTensor(batch[i][2])
+		return batch.tolist()
 
 class PrioritizedReplayMemory():
 	def __init__(self, capactiy=1000, batch_size=128, ALPHA=0.5):
