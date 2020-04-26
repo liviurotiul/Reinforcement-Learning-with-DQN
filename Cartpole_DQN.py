@@ -1,6 +1,3 @@
-
-
-
 import gym
 import math
 import random
@@ -39,19 +36,19 @@ ALGORITHM = 0
 3 - Double DQN with PER #not implemented
 4 - test on api
 '''
-OPT_FREQ = 4
+OPT_FREQ = 2
 SHOW_IMG = False
 FULL_IMG = False
 RGB = False
 DEBUG = False
-VALIDATION_FREQ = 50
-BATCH_SIZE = 42
+VALIDATION_FREQ = 30
+BATCH_SIZE = 64
 GAMMA = 0.99
 EPS_START = 1
 EPS_END = 0.05
-EPS_DECAY = 7000
-TARGET_UPDATE = int(1000*np.sqrt(OPT_FREQ))
-EPISODES = 100000
+EPS_DECAY = 15000
+TARGET_UPDATE = int(900*np.sqrt(OPT_FREQ))
+EPISODES = 50000
 VAL_EPISODES = 20
 EVAL = True
 TRAIN = True
@@ -59,9 +56,9 @@ ALPHA = np.random.randint(1)
 # ENVIRIONMENT = 'LunarLander-v2'
 ENVIRIONMENT = 'CartPole-v0'
 TEST = False
-LR = 3e-7
-CAP = 31500
-EPS_ADAM = 1e-3
+LR = 3e-3
+CAP = 2500
+EPS_ADAM = 1e-8
 
 steps_done = 0
 
@@ -283,8 +280,8 @@ def optimize_DQN():
 	expected_state_action_values = (state_values * GAMMA) + inst_rewards # This is our target tensor
 
 
-	if steps_done % 100 == 0:
-		print(torch.mean(state_values))
+	# if steps_done % 100 == 0:
+	# 	print(torch.mean(state_values))
 
 	# we are basicly comparing what the online network says our maximum reward will be choosing the 
 	# actions we allready chose in the next state to what we now our instant reward is and the predicted value of
@@ -301,6 +298,8 @@ def optimize_DQN():
 	# 	param.grad.data.clamp_(-1, 1)
 	optimizer.step()
 	if DEBUG:
+		print("loss")
+		print(loss.item())
 		print("state_values:")
 		print(state_values)
 		print("nonfinal_mask")
@@ -334,9 +333,6 @@ def optimize_double_DQN():
 
 	# in the state_values will be found the values of the future states given we make actions based on policy
 	# pi and coming from state S (current_states) 
-	if DEBUG:
-		print(target_net(current_states))
-		print(nonfinal_mask)
 	state_values = torch.zeros(BATCH_SIZE, device=device) # where the mask is 0 ergo the next state is final the reward will be 0
 	if ALPHA > 0.5:
 		state_values[nonfinal_mask] = target_net(non_final_next_states).max(1)[0].detach() # TODO : fix this
@@ -365,6 +361,8 @@ def optimize_double_DQN():
 	optimizer1.step()
 
 	if DEBUG:
+		print("loss")
+		print(loss.item())
 		print("state_values:")
 		print(state_values)
 		print("nonfinal_mask")
@@ -476,7 +474,7 @@ if TRAIN:
 	##########################################################
 		
 		if episode % VALIDATION_FREQ == 0:
-			print("validating")
+
 			target_net.eval()
 			validation_rewards = []
 
@@ -484,7 +482,7 @@ if TRAIN:
 				reward_ep = 0
 				next_state = None
 				environment.reset()
-
+				# print("validating")
 				if not TEST: # get our STATE
 					last_screen = get_screen()
 					current_screen = get_screen()
@@ -534,12 +532,13 @@ if TRAIN:
 				print("best validation updated")
 			print(new_efficiency)
 			validation_values.append([steps_done, new_efficiency])
-			if new_efficiency > 70 and t == False:
-				OPT_FREQ = OPT_FREQ * 3 + 3
+			if new_efficiency > 50 and t == False:
+				OPT_FREQ = OPT_FREQ * 4
 				TARGET_UPDATE = int(TARGET_UPDATE * 1.5)
 				t = True
 				print("OPFREQ Tripled")
 			if new_efficiency > 500:
+				plot_durations()
 				input("ai atins performant gringo")
 
 
@@ -561,7 +560,7 @@ if TRAIN:
 		else:
 			last_obs, _, _, _ = environment.step(0)
 			current_obs = last_obs
-			current_state = torch.cat([torch.from_numpy(current_obs), torch.from_numpy(last_obs)]).float().unsqueeze(0)
+			current_state = torch.cat([torch.from_numpy(current_obs), torch.from_numpy(last_obs)]).float().unsqueeze(0).to(device)
 			# print(current_state)
 
 
@@ -613,8 +612,8 @@ if TRAIN:
 				print("An unkown error has occurred when optimizing")
 			if steps_done % TARGET_UPDATE == 0:# and ALGORITHM != 1 and ALGORITHM != 3:
 				target_net.load_state_dict(online_net.state_dict())
-			if DEBUG:
-				count_tensors()
+			# if DEBUG:
+			# 	count_tensors()
 			if done:
 				break
 
