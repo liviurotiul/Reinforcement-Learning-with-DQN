@@ -39,29 +39,29 @@ ALGORITHM = 0
 3 - Double DQN with PER #not implemented
 4 - test on api
 '''
-OPT_FREQ = 15
+OPT_FREQ = 4
 SHOW_IMG = False
-FULL_IMG = True
-RGB = True
+FULL_IMG = False
+RGB = False
 DEBUG = False
-VALIDATION_FREQ = 100
-BATCH_SIZE = 32
+VALIDATION_FREQ = 50
+BATCH_SIZE = 42
 GAMMA = 0.99
 EPS_START = 1
 EPS_END = 0.05
-EPS_DECAY = 9000
-TARGET_UPDATE = int(250*np.sqrt(OPT_FREQ))
-EPISODES = 7000
-VAL_EPISODES = 30
+EPS_DECAY = 7000
+TARGET_UPDATE = int(1000*np.sqrt(OPT_FREQ))
+EPISODES = 100000
+VAL_EPISODES = 20
 EVAL = True
 TRAIN = True
 ALPHA = np.random.randint(1)
 # ENVIRIONMENT = 'LunarLander-v2'
 ENVIRIONMENT = 'CartPole-v0'
 TEST = False
-LR = 4e-6
-CAP = 25000
-EPS_ADAM = 3e-4
+LR = 3e-7
+CAP = 31500
+EPS_ADAM = 1e-3
 
 steps_done = 0
 
@@ -271,7 +271,6 @@ def optimize_DQN():
 
 	non_final_next_states = torch.cat([s for s in np.asarray(batch).transpose()[3].tolist()
 												if s is not None])
-
 	# in the state_values will be found the values of the future states given we make actions based on policy
 	# pi and coming from state S (current_states) 
 	if DEBUG:
@@ -284,6 +283,8 @@ def optimize_DQN():
 	expected_state_action_values = (state_values * GAMMA) + inst_rewards # This is our target tensor
 
 
+	if steps_done % 100 == 0:
+		print(torch.mean(state_values))
 
 	# we are basicly comparing what the online network says our maximum reward will be choosing the 
 	# actions we allready chose in the next state to what we now our instant reward is and the predicted value of
@@ -465,9 +466,9 @@ if ENVIRIONMENT == 'CartPole-v0':
 else:
 	get_screen = get_screen_lander
 
+t = False
 if TRAIN:
 	for episode in range(EPISODES):
-
 
 
 	##########################################################
@@ -533,8 +534,13 @@ if TRAIN:
 				print("best validation updated")
 			print(new_efficiency)
 			validation_values.append([steps_done, new_efficiency])
+			if new_efficiency > 70 and t == False:
+				OPT_FREQ = OPT_FREQ * 3 + 3
+				TARGET_UPDATE = int(TARGET_UPDATE * 1.5)
+				t = True
+				print("OPFREQ Tripled")
 			if new_efficiency > 500:
-				break
+				input("ai atins performant gringo")
 
 
 	##########################################################

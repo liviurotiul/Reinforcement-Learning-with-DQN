@@ -31,7 +31,7 @@ class DQN(nn.Module):
 		x = F.relu(self.bn1(self.pool(self.conv1(x))))
 		x = F.relu(self.bn2(self.pool(self.conv2(x))))
 		x = x.view(x.size(0), -1)
-		x = self.lin2(self.lin1(x))
+		x = F.relu(self.lin2(self.lin1(x)))
 		return x
 
 
