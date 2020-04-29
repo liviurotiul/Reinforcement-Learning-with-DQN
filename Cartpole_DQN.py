@@ -21,7 +21,8 @@ from replay_memory import *
 from gym import wrappers
 import gc
 from collections import defaultdict, OrderedDict
-
+import seaborn as sbs
+import pandas as pd
 
 ###################################################################################################
 #	FLAGS
@@ -36,29 +37,29 @@ ALGORITHM = 0
 3 - Double DQN with PER #not implemented
 4 - test on api
 '''
-OPT_FREQ = 2
+OPT_FREQ = 1
 SHOW_IMG = False
 FULL_IMG = False
-RGB = False
+RGB = True
 DEBUG = False
-VALIDATION_FREQ = 30
-BATCH_SIZE = 64
+VALIDATION_FREQ = 25
+BATCH_SIZE = 128
 GAMMA = 0.99
 EPS_START = 1
 EPS_END = 0.05
 EPS_DECAY = 15000
-TARGET_UPDATE = int(900*np.sqrt(OPT_FREQ))
-EPISODES = 50000
-VAL_EPISODES = 20
-EVAL = True
+TARGET_UPDATE = int(800*np.sqrt(OPT_FREQ))
+EPISODES = 5000
+VAL_EPISODES = 15
+EVAL = False
 TRAIN = True
 ALPHA = np.random.randint(1)
-# ENVIRIONMENT = 'LunarLander-v2'
-ENVIRIONMENT = 'CartPole-v0'
+ENVIRIONMENT = 'LunarLander-v2'
+# ENVIRIONMENT = 'CartPole-v0'
 TEST = False
-LR = 3e-3
-CAP = 2500
-EPS_ADAM = 1e-8
+LR = 3e-4
+CAP = 1700
+EPS_ADAM = 1.5e-8
 
 steps_done = 0
 
@@ -226,6 +227,8 @@ if is_ipython:
     from IPython import display
 plt.ion()
 
+
+
 def plot_durations():
 	plt.figure(1)
 	plt.clf()
@@ -233,8 +236,8 @@ def plot_durations():
 	validation_values_local = np.asarray(validation_values).transpose()
 	durations_t = torch.tensor(episode_durations_local[1], dtype=torch.float)
 	plt.title('Training...')
-	plt.xlabel('Episode')
-	plt.ylabel('Duration')
+	plt.xlabel('Steps')
+	plt.ylabel('Reward')
 
 	plt.plot(episode_durations_local[0], episode_durations_local[1], label="episode rewards", color="blue")
 	plt.plot(validation_values_local[0], validation_values_local[1], label="validation values(everey few episodes)", color="orange")
@@ -249,6 +252,27 @@ def plot_durations():
 		display.clear_output(wait=True)
 		display.display(plt.gcf())
 
+def plt_final():
+	sbs.set()
+	sbs.set_style("dark")
+	sbs.set_context("poster")
+	plt.clf()
+	episode_durations_local = np.asarray(episode_durations).transpose()
+	validation_values_local = np.asarray(validation_values).transpose()
+	durations_t = torch.tensor(episode_durations_local[1], dtype=torch.float)
+	plt.xlabel('Steps')
+	plt.ylabel('Reward')
+
+	plt.plot(episode_durations_local[0], episode_durations_local[1], label="episode rewards", color="blue")
+	# plt.plot(validation_values_local[0], validation_values_local[1], label="validation reward", color="orange")
+
+	sbs.lineplot(validation_values_local[0], validation_values_local[1])
+    # Take 100 episode averages and plot them too
+	if len(durations_t) >= 100:
+		means = durations_t.unfold(0, 100, 1).mean(1).view(-1)
+		means = torch.cat((torch.zeros(99), means))
+		plt.plot(episode_durations_local[0], means.numpy().tolist(), label="reward mean(last 100)", color="green")
+	plt.legend(loc="best")
 
 ###################################################################################################
 #	OPTIMIZE FUNTION
@@ -276,7 +300,7 @@ def optimize_DQN():
 		print(nonfinal_mask)
 	state_values = torch.zeros(BATCH_SIZE, device=device) # where the mask is 0 ergo the next state is final the reward will be 0
 	state_values[nonfinal_mask] = target_net(non_final_next_states).max(1)[0].detach()
-	inst_rewards = torch.cat(np.asarray(batch).transpose()[2].tolist()).to(device)
+	inst_rewards = torch.cat(np.asarray(batch).transpose()[2].tolist())#.double().to(device)
 	expected_state_action_values = (state_values * GAMMA) + inst_rewards # This is our target tensor
 
 
@@ -465,13 +489,98 @@ else:
 	get_screen = get_screen_lander
 
 t = False
+t0 = False
 if TRAIN:
 	for episode in range(EPISODES):
 
 
-	##########################################################
-	#	VALIDATION SECTION
-	##########################################################
+
+		current_state = None; next_state = None
+		environment.reset()
+		next_state = None
+
+		if not TEST: # get our STATE
+			last_screen = get_screen()
+			current_screen = get_screen()
+			if FULL_IMG:
+						# import pdb; pdb.set_trace()
+				current_state = torch.cat([current_screen, last_screen], 1)
+			else:
+				current_state = current_screen - last_screen 
+		else:
+			last_obs, _, _, _ = environment.step(0)
+			current_obs = last_obs
+			current_state = torch.cat([torch.from_numpy(current_obs), torch.from_numpy(last_obs)]).float().unsqueeze(0).to(device)
+			# print(current_state)
+
+
+		total_reward = 0
+		for time_step in count():
+			online_net.eval()
+			if not TEST:
+				if SHOW_IMG:
+					if ENVIRIONMENT == 'CartPole-v0':
+						show(current_state, RGB)
+					else:
+						show(current_screen, RGB)
+				action = select_action(current_state) # get our ACTION
+				_, reward, done, _ = environment.step(action.item()) # get the REWARD and DONE signal
+				total_reward += reward
+				last_screen = current_screen
+				current_screen = get_screen()
+				if not done:
+					if FULL_IMG:
+						next_state = torch.cat([current_screen, last_screen], 1)
+					else:
+						next_state = current_screen - last_screen
+				else:	
+					next_state = None
+			else:
+				last_obs = current_obs
+				action = select_action(current_state) # get our ACTION
+				current_obs, reward, done, _ = environment.step(action.item()) # get the REWARD and DONE signal
+				total_reward += reward
+
+				if not done:
+					next_state = torch.cat([torch.from_numpy(current_obs), torch.from_numpy(last_obs)]).float().unsqueeze(0).to(device)
+				else:
+					next_state = None
+			memory.push_back(current_state,
+							torch.from_numpy(np.asarray([action.item()])).cpu(),
+							torch.from_numpy(np.asarray([reward])).double().to(device),
+							next_state)
+			current_state = next_state
+	
+			if steps_done % OPT_FREQ == 0:
+				if ALGORITHM == 1:
+					optimize_double_DQN()
+				elif ALGORITHM == 3:
+					optimize_double_DQN_PER()
+				elif ALGORITHM == 0:
+					optimize_DQN()
+
+			# print("An unkown error has occurred when optimizing")
+			if steps_done % TARGET_UPDATE == 0:# and ALGORITHM != 1 and ALGORITHM != 3:
+				target_net.load_state_dict(online_net.state_dict())
+			# if DEBUG:
+			# 	count_tensors()
+			if done:
+				break
+
+		episode_durations.append([steps_done, total_reward])
+
+		if episode > 100:
+			new_means = np.sum(np.asarray(episode_durations).transpose()[1][-100:-1])
+			if old_means<new_means:
+				old_means = new_means
+				bestaverage_net.load_state_dict(target_net.state_dict())
+				print("best average updated")
+
+
+
+		##########################################################
+		#	VALIDATION SECTION
+		##########################################################
 		
 		if episode % VALIDATION_FREQ == 0:
 
@@ -532,101 +641,20 @@ if TRAIN:
 				print("best validation updated")
 			print(new_efficiency)
 			validation_values.append([steps_done, new_efficiency])
-			if new_efficiency > 50 and t == False:
-				OPT_FREQ = OPT_FREQ * 4
-				TARGET_UPDATE = int(TARGET_UPDATE * 1.5)
-				t = True
-				print("OPFREQ Tripled")
+			# if new_efficiency > 50 and t == False:
+			# 	OPT_FREQ = OPT_FREQ * 2
+			# 	TARGET_UPDATE = int(TARGET_UPDATE * 1.5)
+			# 	t = True
+			# 	print("OPFREQ Tripled")
 			if new_efficiency > 500:
 				plot_durations()
+				t0 = True
 				input("ai atins performant gringo")
 
 
-	##########################################################
-
-
-		current_state = None; next_state = None
-		environment.reset()
-		next_state = None
-
-		if not TEST: # get our STATE
-			last_screen = get_screen()
-			current_screen = get_screen()
-			if FULL_IMG:
-						# import pdb; pdb.set_trace()
-				current_state = torch.cat([current_screen, last_screen], 1)
-			else:
-				current_state = current_screen - last_screen 
-		else:
-			last_obs, _, _, _ = environment.step(0)
-			current_obs = last_obs
-			current_state = torch.cat([torch.from_numpy(current_obs), torch.from_numpy(last_obs)]).float().unsqueeze(0).to(device)
-			# print(current_state)
-
-
-		total_reward = 0
-		for time_step in count():
-			online_net.eval()
-			if not TEST:
-				if SHOW_IMG:
-					if ENVIRIONMENT == 'CartPole-v0':
-						show(current_state, RGB)
-					else:
-						show(current_screen, RGB)
-				action = select_action(current_state) # get our ACTION
-				_, reward, done, _ = environment.step(action.item()) # get the REWARD and DONE signal
-				total_reward += reward
-				last_screen = current_screen
-				current_screen = get_screen()
-				if not done:
-					if FULL_IMG:
-						next_state = torch.cat([current_screen, last_screen], 1)
-					else:
-						next_state = current_screen - last_screen
-				else:	
-					next_state = None
-			else:
-				last_obs = current_obs
-				action = select_action(current_state) # get our ACTION
-				current_obs, reward, done, _ = environment.step(action.item()) # get the REWARD and DONE signal
-				total_reward += reward
-
-				if not done:
-					next_state = torch.cat([torch.from_numpy(current_obs), torch.from_numpy(last_obs)]).float().unsqueeze(0).to(device)
-				else:
-					next_state = None
-			memory.push_back(current_state,
-							torch.from_numpy(np.asarray([action.item()])).cpu(),
-							torch.from_numpy(np.asarray([reward])).cpu(),
-							next_state)
-			current_state = next_state
-			try:
-				if steps_done % OPT_FREQ == 0:
-					if ALGORITHM == 1:
-						optimize_double_DQN()
-					elif ALGORITHM == 3:
-						optimize_double_DQN_PER()
-					elif ALGORITHM == 0:
-						optimize_DQN()
-			except:
-				print("An unkown error has occurred when optimizing")
-			if steps_done % TARGET_UPDATE == 0:# and ALGORITHM != 1 and ALGORITHM != 3:
-				target_net.load_state_dict(online_net.state_dict())
-			# if DEBUG:
-			# 	count_tensors()
-			if done:
-				break
-
-		episode_durations.append([steps_done, total_reward])
+		##########################################################
 		if not SHOW_IMG:
 			plot_durations()
-
-		if episode > 100:
-			new_means = np.sum(np.asarray(episode_durations).transpose()[1][-100:-1])
-			if old_means<new_means:
-				old_means = new_means
-				bestaverage_net.load_state_dict(target_net.state_dict())
-				print("best average updated")
 
 	torch.save(bestaverage_net, "./models/cartpole/bestaverage_net")
 	torch.save(bestval_net, "./models/cartpole/bestval_net")
@@ -685,4 +713,5 @@ if EVAL:
 		print(sum(validation_rewards)/len(validation_rewards))
 plt.plot(validation_rewards, label="rewards per episode")
 plt.show()
+plt_final()
 input("daa")
